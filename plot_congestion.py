@@ -4,25 +4,24 @@ Plot and analyze Lincoln Tunnel congestion data from
 data/lincoln_tunnel_crossing_times.csv
 
 Usage Examples:
-    # Latest day line plot
+    # Single day: latest day, specific date
     python plot_congestion.py
+    python plot_congestion.py --date 2025-10-17
 
-    # Specific date
-    python plot_congestion.py --date 2025-10-15
-
-    # Averages all days within a date range (inclusive)
+    # Averages all days within range (inclusive)
     python plot_congestion.py --start 2025-10-13 --end 2025-10-20
 
-    # Specific week aggregate
+    # Aggregate days of the week: specific week, all weeks averaged
     python plot_congestion.py --aggregate --week 2025-10-14
-
-    # Different Days of the week averaged over all weeks (median minutes by time of day)
     python plot_congestion.py --aggregate
 
+    # Compare weekdays vs weekends, holidays vs non-holidays, add more?
+    python plot_congestion.py --aggregate --compare weekday_weekend
+    python plot_congestion.py --aggregate --compare holiday
+
     Plots to add:
-    -compare weekends vs weekdays, holidays vs non-holidays
-    -plot each Monday, etc. across multiple weeks
     -compare between different months
+    -mean vs median
 
 
 Flags Summary:
@@ -39,6 +38,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 import matplotlib.pyplot as plt
+from pandas.tseries.holiday import USFederalHolidayCalendar as USFederalHolidayCalendar
 
 # ---- Hour-axis helpers ----
 _HOUR_LABELS = ["12am", "1am", "2am", "3am", "4am", "5am", "6am", "7am", "8am", "9am", "10am", "11am",
@@ -303,10 +303,10 @@ def plot_day(day_df, day):
         _set_y_ticks_from5_every3([avg_df["time_to_ny"], avg_df["time_to_nj"]])
         _apply_grid()
         plt.legend(loc="upper left", frameon=True, framealpha=0.6)
-        plt.title(f"Lincoln Tunnel Congestion — Average over Days ({day[0]} to {day[-1]})", fontsize=14, pad=12)
-        plt.xlabel("Time of Day (America/New_York)")
-        plt.ylabel("Average Minutes")
-        out_png = os.path.join(OUT_DIR, f"time_of_day_avg_{day[0]}_to_{day[-1]}.png")
+        plt.title(f"Lincoln Tunnel — Average over Days ({day[0]} to {day[-1]})", fontsize=14, pad=12)
+        plt.xlabel("Time of Day (New York)")
+        plt.ylabel("Minutes")
+        out_png = os.path.join(OUT_DIR, f"average_{day[0]}_to_{day[-1]}.png")
         plt.tight_layout(pad=1.3)
         plt.savefig(out_png, dpi=160)
         print(f"Saved averaged range plot: {out_png}")
@@ -399,8 +399,8 @@ def plot_day(day_df, day):
     _set_y_ticks_from5_every3([day_df["time_to_ny"], day_df["time_to_nj"]])
     _apply_grid()
 
-    plt.title(f"Lincoln Tunnel Congestion — Single day ({day})", fontsize=14, pad=12)
-    plt.xlabel("Time of Day (America/New_York)")
+    plt.title(f"Lincoln Tunnel — Single day ({day})", fontsize=14, pad=12)
+    plt.xlabel("Time of Day (New York)")
     plt.ylabel("Minutes")
 
     from matplotlib.lines import Line2D
@@ -411,7 +411,7 @@ def plot_day(day_df, day):
     plt.legend(handles=handles, loc="upper left", frameon=True, framealpha=0.6, borderaxespad=0.4)
     plt.tight_layout(pad=1.3)
 
-    out_png = os.path.join(OUT_DIR, f"time_of_day_{day}.png")
+    out_png = os.path.join(OUT_DIR, f"{day}.png")
     plt.savefig(out_png, dpi=160)
     print(f"Saved {out_png}")
 
@@ -431,8 +431,8 @@ def plot_aggregate(df, week_range=None):
     df["time_to_ny"] = df["time_to_ny"].where(df["time_to_ny"] > 0)
     df["time_to_nj"] = df["time_to_nj"].where(df["time_to_nj"] > 0)
 
-    # Aggregate median times per weekday per time_of_day
-    agg = df.groupby(["weekday", "time_of_day"], observed=False)[["time_to_ny", "time_to_nj"]].median(numeric_only=True).reset_index()
+    # Aggregate mean times per weekday per time_of_day
+    agg = df.groupby(["weekday", "time_of_day"], observed=False)[["time_to_ny", "time_to_nj"]].mean(numeric_only=True).reset_index()
 
     # Define weekday order for consistent plotting
     weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -518,11 +518,11 @@ def plot_aggregate(df, week_range=None):
                 )
         plt.scatter(xv, yv, s=4, alpha=1.0, label="_nolegend_", color=weekday_colors.get(day))
     if week_range:
-        plt.title(f"Lincoln Tunnel Congestion — Aggregate by days of the week (to NY) ({week_range[0]} to {week_range[1]})", fontsize=14, pad=12)
+        plt.title(f"Lincoln Tunnel — Aggregate by days of the week (to NY) ({week_range[0]} to {week_range[1]})", fontsize=14, pad=12)
     else:
-        plt.title("Lincoln Tunnel Congestion — Aggregate by days of the week (to NY)", fontsize=14, pad=12)
-    plt.xlabel("Time of Day (America/New_York)")
-    plt.ylabel("Median Minutes (To NY)")
+        plt.title("Lincoln Tunnel — Aggregate by days of the week (to NY)", fontsize=14, pad=12)
+    plt.xlabel("Time of Day (New York)")
+    plt.ylabel("Minutes (To NY)")
     _set_hour_ticks()
     _set_y_ticks_from5_every3([agg["time_to_ny"]])
     _apply_grid()
@@ -534,7 +534,7 @@ def plot_aggregate(df, week_range=None):
     plt.legend(handles=handles, title="Weekday", ncol=2, loc="upper left", frameon=True, framealpha=0.6, borderaxespad=0.4)
     plt.tight_layout(pad=1.3)
 
-    out_png_ny = os.path.join(OUT_DIR, "time_of_day_by_weekday_to_ny.png")
+    out_png_ny = os.path.join(OUT_DIR, "aggregate_to_ny.png")
     plt.savefig(out_png_ny, dpi=160)
     print(f"Saved {out_png_ny}")
 
@@ -606,11 +606,11 @@ def plot_aggregate(df, week_range=None):
                 )
         plt.scatter(xv, yv, s=4, alpha=1.0, label="_nolegend_", color=weekday_colors.get(day))
     if week_range:
-        plt.title(f"Lincoln Tunnel Congestion — Aggregate by days of the week (to NJ) ({week_range[0]} to {week_range[1]})", fontsize=14, pad=12)
+        plt.title(f"Lincoln Tunnel — Aggregate by days of the week (to NJ) ({week_range[0]} to {week_range[1]})", fontsize=14, pad=12)
     else:
-        plt.title("Lincoln Tunnel Congestion — Aggregate by days of the week (to NJ)", fontsize=14, pad=12)
-    plt.xlabel("Time of Day (America/New_York)")
-    plt.ylabel("Median Minutes (To NJ)")
+        plt.title("Lincoln Tunnel — Aggregate by days of the week (to NJ)", fontsize=14, pad=12)
+    plt.xlabel("Time of Day (New York)")
+    plt.ylabel("Minutes (To NJ)")
     _set_hour_ticks()
     _set_y_ticks_from5_every3([agg["time_to_nj"]])
     _apply_grid()
@@ -622,9 +622,92 @@ def plot_aggregate(df, week_range=None):
     plt.legend(handles=handles, title="Weekday", ncol=2, loc="upper left", frameon=True, framealpha=0.6, borderaxespad=0.4)
     plt.tight_layout(pad=1.3)
 
-    out_png_nj = os.path.join(OUT_DIR, "time_of_day_by_weekday_to_nj.png")
+    out_png_nj = os.path.join(OUT_DIR, "aggregate_to_nj.png")
     plt.savefig(out_png_nj, dpi=160)
     print(f"Saved {out_png_nj}")
+
+
+# --------------------- Comparison Plotting (Weekday vs Weekend, Holiday vs Non-holiday) ---------------------
+def plot_compare(df, kind="weekday_weekend", week_range=None):
+    """
+    Compare plots similar to aggregate but contrasting two groups:
+    - kind == "weekday_weekend": compares Weekday (Mon-Fri) vs Weekend (Sat-Sun)
+    - kind == "holiday": compares Holiday vs Non-holiday using US federal holidays
+
+    Produces two figures (To NY and To NJ) saved under OUT_DIR with descriptive filenames.
+    """
+    os.makedirs(OUT_DIR, exist_ok=True)
+
+    # Ensure helper columns exist
+    df = df.copy()
+    df["weekday"] = df["timestamp"].dt.day_name()
+    df["time_bin"] = df["timestamp"].dt.floor("5min").dt.strftime("%H:%M")
+    df["date"] = df["timestamp"].dt.date
+
+    if kind == "weekday_weekend":
+        df["group"] = df["timestamp"].dt.dayofweek.apply(lambda d: "Weekend" if d >= 5 else "Weekday")
+        title_suffix = "Weekday vs Weekend"
+        fname_suffix = "weekday_vs_weekend"
+    elif kind == "holiday":
+        start = df["date"].min()
+        end = df["date"].max()
+        try:
+            cal = USFederalHolidayCalendar()
+            holidays = cal.holidays(start=start, end=end).to_pydatetime()
+            holiday_dates = set([h.date() for h in holidays])
+        except Exception:
+            holiday_dates = set()
+        df["group"] = df["date"].apply(lambda d: "Holiday" if d in holiday_dates else "Non-holiday")
+        title_suffix = "Holiday vs Non-holiday"
+        fname_suffix = "holiday_vs_nonholiday"
+    else:
+        raise ValueError("Unsupported compare kind: choose 'weekday_weekend' or 'holiday'")
+
+    df["time_to_ny"] = df["time_to_ny"].where(df["time_to_ny"] > 0)
+    df["time_to_nj"] = df["time_to_nj"].where(df["time_to_nj"] > 0)
+
+    agg = df.groupby(["group", "time_bin"], observed=False)[["time_to_ny", "time_to_nj"]].mean(numeric_only=True).reset_index()
+
+    group_order = sorted(agg["group"].unique(), key=lambda x: (0 if "Week" in x or "Non" in x else 1, x))
+    colors = ["C0", "C1", "C2", "C3"]
+
+    def _plot_direction(direction_col, ylabel, out_fname):
+        plt.figure(figsize=(12, 7))
+        for i, grp in enumerate(group_order):
+            gdf = agg[agg["group"] == grp].copy()
+            if gdf.empty:
+                continue
+            times = pd.to_datetime(gdf["time_bin"], format="%H:%M", errors="coerce")
+            gdf["x_num"] = (times.dt.hour * 60 + times.dt.minute).astype(int)
+            gdf = gdf.dropna(subset=["x_num"]).sort_values("x_num").drop_duplicates(subset=["x_num"]).reset_index(drop=True)
+            if gdf.empty:
+                continue
+            plt.plot(
+                gdf["x_num"],
+                gdf[direction_col].astype(float),
+                label=grp,
+                linewidth=1.5,
+                alpha=0.9,
+                color=colors[i % len(colors)]
+            )
+
+        title = f"Lincoln Tunnel — {title_suffix} (Average {ylabel})"
+        if week_range:
+            title = f"{title} ({week_range[0]} to {week_range[1]})"
+        plt.title(title, fontsize=14, pad=12)
+        plt.xlabel("Time of Day (New York)")
+        plt.ylabel(f"Minutes ({ylabel})")
+        _set_hour_ticks()
+        _set_y_ticks_from5_every3([agg[direction_col]])
+        _apply_grid()
+        plt.legend(title="", ncol=2, loc="upper left", frameon=True, framealpha=0.6)
+        plt.tight_layout(pad=1.3)
+        out_png = os.path.join(OUT_DIR, out_fname)
+        plt.savefig(out_png, dpi=160)
+        print(f"Saved {out_png}")
+
+    _plot_direction("time_to_ny", "To NY", f"{fname_suffix}_to_ny.png")
+    _plot_direction("time_to_nj", "To NJ", f"{fname_suffix}_to_nj.png")
 
 
 def main():
@@ -634,6 +717,7 @@ def main():
     parser.add_argument("--end", help="End date (YYYY-MM-DD), inclusive")
     parser.add_argument("--aggregate", action="store_true", help="also produce weekday median plots (Mon–Sun)")
     parser.add_argument("--week", help="Any date within the week (YYYY-MM-DD) to limit aggregation to that week")
+    parser.add_argument("--compare", choices=["weekday_weekend", "holiday"], help="Produce comparison plots: 'weekday_weekend' or 'holiday'")
     args = parser.parse_args()
 
     df = load_df()
@@ -658,17 +742,26 @@ def main():
         plot_day(day_df, day)
 
     if args.aggregate:
+        compare_df = df
+        compare_week_range = None
+
         if args.week:
             try:
                 week_date = datetime.strptime(args.week, "%Y-%m-%d").date()
-                week_start = week_date - timedelta(days=week_date.weekday())  # Monday
-                week_end = week_start + timedelta(days=6)  # Sunday
+                week_start = week_date - timedelta(days=week_date.weekday())
+                week_end = week_start + timedelta(days=6)
                 df_week = apply_date_filter(df, start=week_start.isoformat(), end=week_end.isoformat())
                 plot_aggregate(df_week, week_range=(week_start, week_end))
+
+                # Use full dataset for holiday comparison
+                compare_week_range = (week_start, week_end)
             except ValueError:
                 raise SystemExit(f"Invalid --week: {args.week}. Use YYYY-MM-DD.")
         else:
             plot_aggregate(df)
+
+        if args.compare:
+            plot_compare(df, kind=args.compare, week_range=compare_week_range)
 
 
 if __name__ == "__main__":
