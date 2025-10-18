@@ -11,8 +11,8 @@ Usage Examples:
     # Averages all days within range (inclusive)
     python plot_congestion.py --start 2025-10-13 --end 2025-10-20
 
-    # Aggregate days of the week: specific week, all weeks averaged
-    python plot_congestion.py --aggregate --week 2025-10-14
+    # Aggregate days of the week: specific weeks, all weeks averaged
+    python plot_congestion.py --aggregate --week 2025-10-14 --week 2025-10-21
     python plot_congestion.py --aggregate
 
     # Compare weekdays vs weekends, holidays vs non-holidays, add more?
@@ -202,7 +202,7 @@ def apply_date_filter(df, start=None, end=None):
             raise SystemExit(f"Invalid --end: {end}. Use YYYY-MM-DD.")
         df = df[df["date"] <= e]
     if df.empty:
-        raise SystemExit("No rows after applying date range filter.")
+        print(f"[warn] No data found for range {start or '?'} to {end or '?'}, returning empty DataFrame.")
     return df
 
 
@@ -409,7 +409,7 @@ def plot_day(day_df, day):
     print(f"Saved {out_png}")
 
 
-def plot_aggregate(df, week_range=None):
+def plot_aggregate(df, week_range=None, week_dates=None):
     """
     Median minutes by HH:MM across each weekday (Monday–Sunday).
     Creates one plot with a separate line per weekday for To NY and To NJ.
@@ -510,7 +510,13 @@ def plot_aggregate(df, week_range=None):
                     label="_nolegend_",
                 )
         plt.scatter(xv, yv, s=4, alpha=1.0, label="_nolegend_", color=weekday_colors.get(day))
-    if week_range:
+    # Title logic for To NY
+    if week_dates:
+        if len(week_dates) == 1:
+            plt.title(f"Lincoln Tunnel — Aggregate by days of the week (to NY) — Week of {week_dates[0]}", fontsize=14, pad=12)
+        else:
+            plt.title(f"Lincoln Tunnel — Aggregate by days of the week (to NY) — Weeks of {', '.join(week_dates)}", fontsize=14, pad=12)
+    elif week_range:
         plt.title(f"Lincoln Tunnel — Aggregate by days of the week (to NY) ({week_range[0]} to {week_range[1]})", fontsize=14, pad=12)
     else:
         plt.title("Lincoln Tunnel — Aggregate by days of the week (to NY)", fontsize=14, pad=12)
@@ -527,7 +533,15 @@ def plot_aggregate(df, week_range=None):
     plt.legend(handles=handles, title="Weekday", ncol=2, loc="upper left", frameon=True, framealpha=0.6, borderaxespad=0.4)
     plt.tight_layout(pad=1.3)
 
-    out_png_ny = os.path.join(OUT_DIR, "aggregate_to_ny.png")
+    # Determine output filename for NY direction
+    if week_dates:
+        if len(week_dates) == 1:
+            tag = f"week_{week_dates[0]}"
+        else:
+            tag = "weeks_" + "_".join(week_dates)
+        out_png_ny = os.path.join(OUT_DIR, f"aggregate_to_ny_{tag}.png")
+    else:
+        out_png_ny = os.path.join(OUT_DIR, "aggregate_to_ny.png")
     plt.savefig(out_png_ny, dpi=160)
     print(f"Saved {out_png_ny}")
 
@@ -598,7 +612,13 @@ def plot_aggregate(df, week_range=None):
                     label="_nolegend_",
                 )
         plt.scatter(xv, yv, s=4, alpha=1.0, label="_nolegend_", color=weekday_colors.get(day))
-    if week_range:
+    # Title logic for To NJ
+    if week_dates:
+        if len(week_dates) == 1:
+            plt.title(f"Lincoln Tunnel — Aggregate by days of the week (to NJ) — Week of {week_dates[0]}", fontsize=14, pad=12)
+        else:
+            plt.title(f"Lincoln Tunnel — Aggregate by days of the week (to NJ) — Weeks of {', '.join(week_dates)}", fontsize=14, pad=12)
+    elif week_range:
         plt.title(f"Lincoln Tunnel — Aggregate by days of the week (to NJ) ({week_range[0]} to {week_range[1]})", fontsize=14, pad=12)
     else:
         plt.title("Lincoln Tunnel — Aggregate by days of the week (to NJ)", fontsize=14, pad=12)
@@ -615,7 +635,15 @@ def plot_aggregate(df, week_range=None):
     plt.legend(handles=handles, title="Weekday", ncol=2, loc="upper left", frameon=True, framealpha=0.6, borderaxespad=0.4)
     plt.tight_layout(pad=1.3)
 
-    out_png_nj = os.path.join(OUT_DIR, "aggregate_to_nj.png")
+    # Determine output filename for NJ direction
+    if week_dates:
+        if len(week_dates) == 1:
+            tag = f"week_{week_dates[0]}"
+        else:
+            tag = "weeks_" + "_".join(week_dates)
+        out_png_nj = os.path.join(OUT_DIR, f"aggregate_to_nj_{tag}.png")
+    else:
+        out_png_nj = os.path.join(OUT_DIR, "aggregate_to_nj.png")
     plt.savefig(out_png_nj, dpi=160)
     print(f"Saved {out_png_nj}")
 
@@ -709,7 +737,7 @@ def main():
     parser.add_argument("--start", help="Start date (YYYY-MM-DD), inclusive")
     parser.add_argument("--end", help="End date (YYYY-MM-DD), inclusive")
     parser.add_argument("--aggregate", action="store_true", help="also produce weekday median plots (Mon–Sun)")
-    parser.add_argument("--week", help="Any date within the week (YYYY-MM-DD) to limit aggregation to that week")
+    parser.add_argument("--week", action="append", help="Any date within the week (YYYY-MM-DD); can be repeated to include multiple weeks")
     parser.add_argument("--compare", choices=["weekday_weekend", "holiday"], help="Produce comparison plots: 'weekday_weekend' or 'holiday'")
     args = parser.parse_args()
 
@@ -717,6 +745,45 @@ def main():
     # Apply date filters if provided (affects all downstream plots)
     if args.start or args.end:
         df = apply_date_filter(df, start=args.start, end=args.end)
+
+    # Aggregate logic (move above plot logic for day/range)
+    if args.aggregate:
+        compare_df = df
+        compare_week_range = None
+
+        if args.week:
+            week_ranges = []
+            dfs_to_merge = []
+            for week_str in args.week:
+                try:
+                    week_date = datetime.strptime(week_str, "%Y-%m-%d").date()
+                    week_start = week_date - timedelta(days=week_date.weekday())
+                    week_end = week_start + timedelta(days=6)
+                    df_week = apply_date_filter(df, start=week_start.isoformat(), end=week_end.isoformat())
+                    if not df_week.empty:
+                        dfs_to_merge.append(df_week)
+                        week_ranges.append((week_start, week_end))
+                    else:
+                        print(f"[warn] No data for week of {week_start} to {week_end}, skipping.")
+                except ValueError:
+                    raise SystemExit(f"Invalid --week: {week_str}. Use YYYY-MM-DD.")
+            if dfs_to_merge:
+                combined_df = pd.concat(dfs_to_merge, ignore_index=True)
+                full_start = min(start for start, _ in week_ranges)
+                full_end = max(end for _, end in week_ranges)
+                week_dates = [str(w[0]) for w in week_ranges]
+                plot_aggregate(combined_df, week_range=(full_start, full_end), week_dates=week_dates)
+                compare_week_range = (full_start, full_end)
+            else:
+                print("[warn] No non-empty data found for specified weeks.")
+        else:
+            plot_aggregate(df)
+
+        if args.compare:
+            plot_compare(df, kind=args.compare, week_range=compare_week_range)
+            return
+        else:
+            return
 
     # Plot logic for day/range
     if args.date:
@@ -733,28 +800,6 @@ def main():
     else:
         day, day_df = pick_date(df, None)
         plot_day(day_df, day)
-
-    if args.aggregate:
-        compare_df = df
-        compare_week_range = None
-
-        if args.week:
-            try:
-                week_date = datetime.strptime(args.week, "%Y-%m-%d").date()
-                week_start = week_date - timedelta(days=week_date.weekday())
-                week_end = week_start + timedelta(days=6)
-                df_week = apply_date_filter(df, start=week_start.isoformat(), end=week_end.isoformat())
-                plot_aggregate(df_week, week_range=(week_start, week_end))
-
-                # Use full dataset for holiday comparison
-                compare_week_range = (week_start, week_end)
-            except ValueError:
-                raise SystemExit(f"Invalid --week: {args.week}. Use YYYY-MM-DD.")
-        else:
-            plot_aggregate(df)
-
-        if args.compare:
-            plot_compare(df, kind=args.compare, week_range=compare_week_range)
 
 
 if __name__ == "__main__":
