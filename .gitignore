@@ -12,7 +12,7 @@ __pycache__/
 .idea/
 
 # Output charts
-charts/
+# charts/
 
 # System files
 .DS_Store
