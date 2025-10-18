@@ -1,0 +1,18 @@
+# Virtual environments
+tunnelenv/
+env/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# PyCharm config
+.idea/
+
+# Output charts
+charts/
+
+# System files
+.DS_Store
