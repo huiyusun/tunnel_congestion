@@ -22,13 +22,6 @@ Usage Examples:
     Plots to add:
     -compare between different months
     -mean vs median
-
-
-Flags Summary:
-  --date        YYYY-MM-DD for a specific day's line plot.
-  --start       Start date (YYYY-MM-DD) to filter the dataset (inclusive).
-  --end         End date (YYYY-MM-DD), inclusive.
-  --aggregate   Plots median minutes by time of day, split by weekday.
 """
 
 import os
