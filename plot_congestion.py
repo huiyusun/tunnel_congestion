@@ -15,9 +15,10 @@ Usage Examples:
     python plot_congestion.py --aggregate --week 2025-10-14 --week 2025-10-21
     python plot_congestion.py --aggregate
 
-    # Compare weekdays vs weekends, holidays vs non-holidays, add more?
+    # Compare weekdays vs weekends; holidays vs non-holidays; each mondays, tuesdays with each other; add more?
     python plot_congestion.py --aggregate --compare weekday_weekend
     python plot_congestion.py --aggregate --compare holiday
+    python plot_congestion.py --compare monday
 
     Plots to add:
     -compare between different months
@@ -509,7 +510,7 @@ def plot_aggregate(df, week_range=None, week_dates=None):
                     color=color,
                     label="_nolegend_",
                 )
-        plt.scatter(xv, yv, s=4, alpha=1.0, label="_nolegend_", color=weekday_colors.get(day))
+        # Removed scatter: plt.scatter(xv, yv, s=4, alpha=1.0, label="_nolegend_", color=weekday_colors.get(day))
     # Title logic for To NY
     if week_dates:
         if len(week_dates) == 1:
@@ -611,7 +612,7 @@ def plot_aggregate(df, week_range=None, week_dates=None):
                     color=color,
                     label="_nolegend_",
                 )
-        plt.scatter(xv, yv, s=4, alpha=1.0, label="_nolegend_", color=weekday_colors.get(day))
+        # Removed scatter: plt.scatter(xv, yv, s=4, alpha=1.0, label="_nolegend_", color=weekday_colors.get(day))
     # Title logic for To NJ
     if week_dates:
         if len(week_dates) == 1:
@@ -681,8 +682,14 @@ def plot_compare(df, kind="weekday_weekend", week_range=None):
         df["group"] = df["date"].apply(lambda d: "Holiday" if d in holiday_dates else "Non-holiday")
         title_suffix = "Holiday vs Non-holiday"
         fname_suffix = "holiday_vs_nonholiday"
+    elif kind.lower() in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]:
+        target_day = kind.capitalize()
+        df = df[df["weekday"] == target_day]
+        df["group"] = df["date"].astype(str)  # each day is its own group
+        title_suffix = f"All {target_day}s"
+        fname_suffix = f"compare_{target_day.lower()}"
     else:
-        raise ValueError("Unsupported compare kind: choose 'weekday_weekend' or 'holiday'")
+        raise ValueError("Unsupported compare kind: choose 'weekday_weekend', 'holiday', or a weekday name")
 
     df["time_to_ny"] = df["time_to_ny"].where(df["time_to_ny"] > 0)
     df["time_to_nj"] = df["time_to_nj"].where(df["time_to_nj"] > 0)
@@ -690,7 +697,7 @@ def plot_compare(df, kind="weekday_weekend", week_range=None):
     agg = df.groupby(["group", "time_bin"], observed=False)[["time_to_ny", "time_to_nj"]].mean(numeric_only=True).reset_index()
 
     group_order = sorted(agg["group"].unique(), key=lambda x: (0 if "Week" in x or "Non" in x else 1, x))
-    colors = ["C0", "C1", "C2", "C3"]
+    colors = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9"]
 
     def _plot_direction(direction_col, ylabel, out_fname):
         plt.figure(figsize=(12, 7))
@@ -711,6 +718,8 @@ def plot_compare(df, kind="weekday_weekend", week_range=None):
                 alpha=0.9,
                 color=colors[i % len(colors)]
             )
+            # Ensure no scatter points are drawn in compare plot
+            # (no plt.scatter call)
 
         title = f"Lincoln Tunnel — {title_suffix} (Average {ylabel})"
         if week_range:
@@ -738,7 +747,10 @@ def main():
     parser.add_argument("--end", help="End date (YYYY-MM-DD), inclusive")
     parser.add_argument("--aggregate", action="store_true", help="also produce weekday median plots (Mon–Sun)")
     parser.add_argument("--week", action="append", help="Any date within the week (YYYY-MM-DD); can be repeated to include multiple weeks")
-    parser.add_argument("--compare", choices=["weekday_weekend", "holiday"], help="Produce comparison plots: 'weekday_weekend' or 'holiday'")
+    parser.add_argument("--compare", choices=[
+        "weekday_weekend", "holiday",
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
+    ], help="Produce comparison plots.")
     args = parser.parse_args()
 
     df = load_df()
@@ -784,6 +796,11 @@ def main():
             return
         else:
             return
+
+    # Handle --compare even if --aggregate is not passed
+    if args.compare:
+        plot_compare(df, kind=args.compare)
+        return
 
     # Plot logic for day/range
     if args.date:
