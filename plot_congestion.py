@@ -4,25 +4,25 @@ Plot and analyze Lincoln Tunnel congestion data from
 data/lincoln_tunnel_crossing_times.csv
 
 Usage Examples:
-    # Single day: latest day, specific date
+    # Single: Latest day; specific date; averages all days within range
     python plot_congestion.py
     python plot_congestion.py --date 2025-10-17
+    python plot_congestion.py --start 2025-10-13 --end 2025-11-20
 
-    # Averages all days within range (inclusive)
-    python plot_congestion.py --start 2025-10-13 --end 2025-10-20
-
-    # Aggregate days of the week: specific weeks, all weeks averaged
-    python plot_congestion.py --aggregate --week 2025-10-14 --week 2025-10-21
+    # Aggregate: all weeks averaged; specific weeks; rush vs non-rush periods
     python plot_congestion.py --aggregate
+    python plot_congestion.py --aggregate --week 2025-10-14 --week 2025-10-21
+    python plot_congestion.py --aggregate --blocks
 
-    # Compare weekdays vs weekends; holidays vs non-holidays; each mondays, tuesdays with each other; add more?
+    # Compare: weekdays vs weekends; holidays vs non-holidays; each tuesdays with each other
     python plot_congestion.py --aggregate --compare weekday_weekend
     python plot_congestion.py --aggregate --compare holiday
-    python plot_congestion.py --compare monday
+    python plot_congestion.py --compare tuesday
 
-    Plots to add:
-    -compare between different months
-    -mean vs median
+    # Compare: different months; average rush vs non-rush periods; tuesday rush vs non-rush periods;
+    python plot_congestion.py --compare months
+    python plot_congestion.py --compare time_of_day_blocks
+    python plot_congestion.py --compare blocks --weekday tuesday
 """
 
 import os
@@ -655,8 +655,10 @@ def plot_compare(df, kind="weekday_weekend", week_range=None):
     Compare plots similar to aggregate but contrasting two groups:
     - kind == "weekday_weekend": compares Weekday (Mon-Fri) vs Weekend (Sat-Sun)
     - kind == "holiday": compares Holiday vs Non-holiday using US federal holidays
-
-    Produces two figures (To NY and To NJ) saved under OUT_DIR with descriptive filenames.
+    - kind == "monday_blocks": each Monday as a line, time-of-day blocks (rush vs non-rush)
+    - kind == "time_of_day_blocks": lines for To NY and To NJ, all days, by time-of-day blocks
+    - kind == weekday: each day (e.g., Monday) as a line
+    - kind == "months": each month as a line
     """
     os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -666,6 +668,132 @@ def plot_compare(df, kind="weekday_weekend", week_range=None):
     df["time_bin"] = df["timestamp"].dt.floor("5min").dt.strftime("%H:%M")
     df["date"] = df["timestamp"].dt.date
 
+    # ---- Time-of-day block definitions (refined for "blocks" and "time_of_day_blocks") ----
+    block_edges = [0, 120, 360, 480, 540, 600, 660, 720, 960, 1020, 1080, 1140, 1200, 1320, 1440]
+    block_labels = [
+        "12–2am", "2–6am", "6–8am", "8–9am", "9–10am", "10–11am", "11am–12pm",
+        "12–4pm", "4–5pm", "5–6pm", "6–7pm", "7–8pm", "8–10pm", "10pm–12am"
+    ]
+
+    def assign_time_of_day_block(minutes: int):
+        for i in range(len(block_edges) - 1):
+            if block_edges[i] <= minutes < block_edges[i + 1]:
+                return block_labels[i]
+        # If at exactly 1440 (shouldn't happen), assign to last block
+        return block_labels[-1]
+
+    if kind == "blocks":
+        # Get weekday argument from caller (should be passed via function argument or closure, see main)
+        # We'll use a global variable _compare_weekday if set; otherwise, error.
+        if not hasattr(plot_compare, "_weekday") or plot_compare._weekday is None:
+            print("[error] --compare blocks requires --weekday argument (e.g. --weekday monday)")
+            return
+        target_weekday = plot_compare._weekday.capitalize()
+        filtered = df[df["weekday"] == target_weekday].copy()
+        if filtered.empty:
+            print(f"[warn] No data found for weekday {target_weekday}.")
+            return
+        filtered["minute"] = filtered["timestamp"].dt.hour * 60 + filtered["timestamp"].dt.minute
+        filtered["block"] = filtered["minute"].apply(assign_time_of_day_block)
+        filtered["group"] = filtered["date"].astype(str)
+        agg = filtered.groupby(["group", "block"], observed=False)[["time_to_ny", "time_to_nj"]].mean(numeric_only=True).reset_index()
+        agg["block"] = pd.Categorical(agg["block"], categories=block_labels, ordered=True)
+        agg = agg.sort_values(["group", "block"])
+        group_order = sorted(agg["group"].unique())
+        colors = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9"]
+        # Plot To NY
+        plt.figure(figsize=(10, 6))
+        for i, grp in enumerate(group_order):
+            gdf = agg[agg["group"] == grp]
+            if gdf.empty:
+                continue
+            plt.plot(
+                gdf["block"],
+                gdf["time_to_ny"],
+                label=grp,
+                marker="o",
+                linewidth=1.5,
+                alpha=0.9,
+                color=colors[i % len(colors)]
+            )
+        plt.title(f"Lincoln Tunnel — {target_weekday}s: Rush vs Non-Rush (To NY)", fontsize=14, pad=12)
+        plt.xlabel("Time of Day Block")
+        plt.ylabel("Average Minutes (To NY)")
+        plt.xticks(block_labels, rotation=15)
+        _set_y_ticks_from5_every3([agg["time_to_ny"]])
+        _apply_grid()
+        plt.legend(title=target_weekday, ncol=2, loc="upper left", frameon=True, framealpha=0.6)
+        plt.tight_layout(pad=1.3)
+        out_png = os.path.join(OUT_DIR, f"{target_weekday.lower()}_blocks_to_ny.png")
+        plt.savefig(out_png, dpi=160)
+        print(f"Saved {out_png}")
+        # Plot To NJ
+        plt.figure(figsize=(10, 6))
+        for i, grp in enumerate(group_order):
+            gdf = agg[agg["group"] == grp]
+            if gdf.empty:
+                continue
+            plt.plot(
+                gdf["block"],
+                gdf["time_to_nj"],
+                label=grp,
+                marker="o",
+                linewidth=1.5,
+                alpha=0.9,
+                color=colors[i % len(colors)]
+            )
+        plt.title(f"Lincoln Tunnel — {target_weekday}s: Rush vs Non-Rush (To NJ)", fontsize=14, pad=12)
+        plt.xlabel("Time of Day Block")
+        plt.ylabel("Average Minutes (To NJ)")
+        plt.xticks(block_labels, rotation=15)
+        _set_y_ticks_from5_every3([agg["time_to_nj"]])
+        _apply_grid()
+        plt.legend(title=target_weekday, ncol=2, loc="upper left", frameon=True, framealpha=0.6)
+        plt.tight_layout(pad=1.3)
+        out_png = os.path.join(OUT_DIR, f"{target_weekday.lower()}_blocks_to_nj.png")
+        plt.savefig(out_png, dpi=160)
+        print(f"Saved {out_png}")
+        return
+    elif kind == "time_of_day_blocks":
+        # All days, aggregate by block, separate lines for To NY and To NJ
+        df2 = df.copy()
+        df2["minute"] = df2["timestamp"].dt.hour * 60 + df2["timestamp"].dt.minute
+        df2["block"] = df2["minute"].apply(assign_time_of_day_block)
+        # Aggregate across all days, by block
+        agg = df2.groupby("block", observed=False)[["time_to_ny", "time_to_nj"]].mean(numeric_only=True).reset_index()
+        agg["block"] = pd.Categorical(agg["block"], categories=block_labels, ordered=True)
+        agg = agg.sort_values("block")
+        # Plot both directions as lines
+        plt.figure(figsize=(10, 6))
+        plt.plot(
+            agg["block"],
+            agg["time_to_ny"],
+            marker="o",
+            linewidth=1.8,
+            color="C0",
+            label="To NY"
+        )
+        plt.plot(
+            agg["block"],
+            agg["time_to_nj"],
+            marker="o",
+            linewidth=1.8,
+            color="C1",
+            label="To NJ"
+        )
+        plt.title("Lincoln Tunnel — Daily Time-of-Day Averages", fontsize=14, pad=12)
+        plt.xlabel("Time of Day Block")
+        plt.ylabel("Average Minutes")
+        plt.xticks(block_labels, rotation=15)
+        _set_y_ticks_from5_every3([agg["time_to_ny"], agg["time_to_nj"]])
+        _apply_grid()
+        plt.legend(ncol=2, loc="upper left", frameon=True, framealpha=0.6)
+        plt.tight_layout(pad=1.3)
+        out_png = os.path.join(OUT_DIR, "time_of_day_blocks.png")
+        plt.savefig(out_png, dpi=160)
+        print(f"Saved {out_png}")
+        return
+    # ---- Existing logic for other compare kinds ----
     if kind == "weekday_weekend":
         df["group"] = df["timestamp"].dt.dayofweek.apply(lambda d: "Weekend" if d >= 5 else "Weekday")
         title_suffix = "Weekday vs Weekend"
@@ -688,8 +816,18 @@ def plot_compare(df, kind="weekday_weekend", week_range=None):
         df["group"] = df["date"].astype(str)  # each day is its own group
         title_suffix = f"All {target_day}s"
         fname_suffix = f"compare_{target_day.lower()}"
+    elif kind == "months":
+        # group by month as "YYYY-MM"
+        df["month_str"] = df["timestamp"].dt.to_period("M").astype(str)
+        # Optionally: filter out months with insufficient data (e.g., < 5 days)
+        month_counts = df.groupby("month_str")["date"].nunique()
+        sufficient_months = month_counts[month_counts >= 5].index
+        df = df[df["month_str"].isin(sufficient_months)]
+        df["group"] = df["month_str"]
+        title_suffix = "Monthly Comparison"
+        fname_suffix = "compare_months"
     else:
-        raise ValueError("Unsupported compare kind: choose 'weekday_weekend', 'holiday', or a weekday name")
+        raise ValueError("Unsupported compare kind: choose 'weekday_weekend', 'holiday', 'months', 'monday_blocks', 'time_of_day_blocks', or a weekday name")
 
     df["time_to_ny"] = df["time_to_ny"].where(df["time_to_ny"] > 0)
     df["time_to_nj"] = df["time_to_nj"].where(df["time_to_nj"] > 0)
@@ -748,9 +886,12 @@ def main():
     parser.add_argument("--aggregate", action="store_true", help="also produce weekday median plots (Mon–Sun)")
     parser.add_argument("--week", action="append", help="Any date within the week (YYYY-MM-DD); can be repeated to include multiple weeks")
     parser.add_argument("--compare", choices=[
-        "weekday_weekend", "holiday",
-        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
+        "weekday_weekend", "holiday", "months",
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+        "blocks", "time_of_day_blocks"
     ], help="Produce comparison plots.")
+    parser.add_argument("--weekday", type=str, help="Used with --compare blocks: specify weekday (e.g. monday, tuesday, ...)")
+    parser.add_argument("--blocks", action="store_true", help="In aggregate mode: plot weekday aggregate using refined time-of-day blocks")
     args = parser.parse_args()
 
     df = load_df()
@@ -762,7 +903,7 @@ def main():
     if args.aggregate:
         compare_df = df
         compare_week_range = None
-
+        week_dates = None
         if args.week:
             week_ranges = []
             dfs_to_merge = []
@@ -786,12 +927,26 @@ def main():
                 week_dates = [str(w[0]) for w in week_ranges]
                 plot_aggregate(combined_df, week_range=(full_start, full_end), week_dates=week_dates)
                 compare_week_range = (full_start, full_end)
+                # For blocks: use combined_df and week_dates
+                if args.blocks:
+                    plot_aggregate_blocks(combined_df, week_range=(full_start, full_end), week_dates=week_dates)
             else:
                 print("[warn] No non-empty data found for specified weeks.")
         else:
             plot_aggregate(df)
+            if args.blocks:
+                plot_aggregate_blocks(df, week_range=None, week_dates=None)
 
         if args.compare:
+            # Attach weekday argument for blocks mode
+            if args.compare == "blocks":
+                if not args.weekday or args.weekday.lower() not in [
+                    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
+                ]:
+                    raise SystemExit("--compare blocks requires --weekday (monday, tuesday, ..., sunday)")
+                plot_compare._weekday = args.weekday.lower()
+            else:
+                plot_compare._weekday = None
             plot_compare(df, kind=args.compare, week_range=compare_week_range)
             return
         else:
@@ -799,6 +954,14 @@ def main():
 
     # Handle --compare even if --aggregate is not passed
     if args.compare:
+        if args.compare == "blocks":
+            if not args.weekday or args.weekday.lower() not in [
+                "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
+            ]:
+                raise SystemExit("--compare blocks requires --weekday (monday, tuesday, ..., sunday)")
+            plot_compare._weekday = args.weekday.lower()
+        else:
+            plot_compare._weekday = None
         plot_compare(df, kind=args.compare)
         return
 
@@ -817,6 +980,140 @@ def main():
     else:
         day, day_df = pick_date(df, None)
         plot_day(day_df, day)
+
+
+# --- New function: plot_aggregate_blocks ---
+def plot_aggregate_blocks(df, week_range=None, week_dates=None):
+    """
+    Plots aggregate by weekday and refined time-of-day blocks (same as those used in compare blocks).
+    For each weekday, calculates average congestion for each block.
+    Generates one plot each for To NY and To NJ.
+    """
+    import matplotlib.pyplot as plt
+    os.makedirs(OUT_DIR, exist_ok=True)
+    # Add weekday names
+    df = df.copy()
+    df["weekday"] = df["timestamp"].dt.day_name()
+    # Define block edges and labels (same as compare blocks)
+    block_edges = [0, 120, 360, 480, 540, 600, 660, 720, 960, 1020, 1080, 1140, 1200, 1320, 1440]
+    block_labels = [
+        "12–2am", "2–6am", "6–8am", "8–9am", "9–10am", "10–11am", "11am–12pm",
+        "12–4pm", "4–5pm", "5–6pm", "6–7pm", "7–8pm", "8–10pm", "10pm–12am"
+    ]
+
+    def assign_time_of_day_block(minutes: int):
+        for i in range(len(block_edges) - 1):
+            if block_edges[i] <= minutes < block_edges[i + 1]:
+                return block_labels[i]
+        return block_labels[-1]
+
+    # Assign block for each row
+    df["minute"] = df["timestamp"].dt.hour * 60 + df["timestamp"].dt.minute
+    df["block"] = df["minute"].apply(assign_time_of_day_block)
+    # Only keep valid values
+    df["time_to_ny"] = df["time_to_ny"].where(df["time_to_ny"] > 0)
+    df["time_to_nj"] = df["time_to_nj"].where(df["time_to_nj"] > 0)
+    # Group by weekday and block
+    agg = df.groupby(["weekday", "block"], observed=False)[["time_to_ny", "time_to_nj"]].mean(numeric_only=True).reset_index()
+    # Ensure categorical order for plotting (set block as categorical BEFORE any filtering)
+    weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    agg["weekday"] = pd.Categorical(agg["weekday"], categories=weekday_order, ordered=True)
+    # Set block as categorical and ordered IMMEDIATELY after agg is created (before any filtering)
+    agg["block"] = pd.Categorical(agg["block"], categories=block_labels, ordered=True)
+    agg = agg.sort_values(["weekday", "block"])
+    # Fixed colors per weekday for consistent segment coloring
+    weekday_colors = {
+        "Monday": "C0",
+        "Tuesday": "C1",
+        "Wednesday": "C2",
+        "Thursday": "C3",
+        "Friday": "C4",
+        "Saturday": "C5",
+        "Sunday": "C6",
+    }
+    # Plot To NY
+    plt.figure(figsize=(12, 7))
+    x = list(range(len(block_labels)))
+    for day in weekday_order:
+        day_df = agg[agg["weekday"] == day].copy()
+        if day_df.empty:
+            continue
+        # Ensure block is categorical and sorted for this day's slice
+        day_df["block"] = pd.Categorical(day_df["block"], categories=block_labels, ordered=True)
+        day_df = day_df.sort_values("block")
+        # y-values aligned with block_labels
+        y_vals = day_df.set_index("block").reindex(block_labels)["time_to_ny"].to_numpy()
+        plt.plot(
+            x,
+            y_vals,
+            label=day,
+            marker="o",
+            linewidth=1.5,
+            color=weekday_colors.get(day)
+        )
+    # Title logic for To NY
+    if week_dates:
+        if len(week_dates) == 1:
+            plt.title(f"Lincoln Tunnel — Aggregate by weekday & block (to NY) — Week of {week_dates[0]}", fontsize=14, pad=12)
+        else:
+            plt.title(f"Lincoln Tunnel — Aggregate by weekday & block (to NY) — Weeks of {', '.join(week_dates)}", fontsize=14, pad=12)
+    elif week_range:
+        plt.title(f"Lincoln Tunnel — Aggregate by weekday & block (to NY) ({week_range[0]} to {week_range[1]})", fontsize=14, pad=12)
+    else:
+        plt.title("Lincoln Tunnel — Aggregate by weekday & block (to NY)", fontsize=14, pad=12)
+    plt.xlabel("Time of Day Block")
+    plt.ylabel("Average Minutes (To NY)")
+    plt.xticks(x, block_labels, rotation=15)
+    _set_y_ticks_from5_every3([agg["time_to_ny"]])
+    _apply_grid()
+    from matplotlib.lines import Line2D
+    present_days = [d for d in weekday_order if not agg[agg["weekday"] == d].empty]
+    handles = [Line2D([0], [0], color=weekday_colors[d], lw=1.5, label=d) for d in present_days]
+    plt.legend(handles=handles, title="Weekday", ncol=2, loc="upper left", frameon=True, framealpha=0.6, borderaxespad=0.4)
+    plt.tight_layout(pad=1.3)
+    out_png_ny = os.path.join(OUT_DIR, "aggregate_blocks_to_ny.png")
+    plt.savefig(out_png_ny, dpi=160)
+    print(f"Saved {out_png_ny}")
+    # Plot To NJ
+    plt.figure(figsize=(12, 7))
+    x = list(range(len(block_labels)))
+    for day in weekday_order:
+        day_df = agg[agg["weekday"] == day].copy()
+        if day_df.empty:
+            continue
+        # Ensure block is categorical and sorted for this day's slice
+        day_df["block"] = pd.Categorical(day_df["block"], categories=block_labels, ordered=True)
+        day_df = day_df.sort_values("block")
+        y_vals = day_df.set_index("block").reindex(block_labels)["time_to_nj"].to_numpy()
+        plt.plot(
+            x,
+            y_vals,
+            label=day,
+            marker="o",
+            linewidth=1.5,
+            color=weekday_colors.get(day)
+        )
+    # Title logic for To NJ
+    if week_dates:
+        if len(week_dates) == 1:
+            plt.title(f"Lincoln Tunnel — Aggregate by weekday & block (to NJ) — Week of {week_dates[0]}", fontsize=14, pad=12)
+        else:
+            plt.title(f"Lincoln Tunnel — Aggregate by weekday & block (to NJ) — Weeks of {', '.join(week_dates)}", fontsize=14, pad=12)
+    elif week_range:
+        plt.title(f"Lincoln Tunnel — Aggregate by weekday & block (to NJ) ({week_range[0]} to {week_range[1]})", fontsize=14, pad=12)
+    else:
+        plt.title("Lincoln Tunnel — Aggregate by weekday & block (to NJ)", fontsize=14, pad=12)
+    plt.xlabel("Time of Day Block")
+    plt.ylabel("Average Minutes (To NJ)")
+    plt.xticks(x, block_labels, rotation=15)
+    _set_y_ticks_from5_every3([agg["time_to_nj"]])
+    _apply_grid()
+    handles = [Line2D([0], [0], color=weekday_colors[d], lw=1.5, label=d) for d in present_days]
+    plt.legend(handles=handles, title="Weekday", ncol=2, loc="upper left", frameon=True, framealpha=0.6, borderaxespad=0.4)
+    plt.tight_layout(pad=1.3)
+    out_png_nj = os.path.join(OUT_DIR, "aggregate_blocks_to_nj.png")
+    plt.savefig(out_png_nj, dpi=160)
+    print(f"Saved {out_png_nj}")
 
 
 if __name__ == "__main__":
