@@ -701,15 +701,18 @@ def plot_compare(df, kind="weekday_weekend", week_range=None):
         agg = agg.sort_values(["group", "block"])
         group_order = sorted(agg["group"].unique())
         colors = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9"]
+        x = list(range(len(block_labels)))
         # Plot To NY
         plt.figure(figsize=(10, 6))
         for i, grp in enumerate(group_order):
             gdf = agg[agg["group"] == grp]
             if gdf.empty:
                 continue
+            # y-values aligned with block_labels
+            y_vals = gdf.set_index("block").reindex(block_labels)["time_to_ny"].to_numpy()
             plt.plot(
-                gdf["block"],
-                gdf["time_to_ny"],
+                x,
+                y_vals,
                 label=grp,
                 marker="o",
                 linewidth=1.5,
@@ -719,7 +722,7 @@ def plot_compare(df, kind="weekday_weekend", week_range=None):
         plt.title(f"Lincoln Tunnel — {target_weekday}s: Rush vs Non-Rush (To NY)", fontsize=14, pad=12)
         plt.xlabel("Time of Day Block")
         plt.ylabel("Average Minutes (To NY)")
-        plt.xticks(block_labels, rotation=15)
+        plt.xticks(x, block_labels, rotation=15)
         _set_y_ticks_from5_every3([agg["time_to_ny"]])
         _apply_grid()
         plt.legend(title=target_weekday, ncol=2, loc="upper left", frameon=True, framealpha=0.6)
@@ -733,9 +736,10 @@ def plot_compare(df, kind="weekday_weekend", week_range=None):
             gdf = agg[agg["group"] == grp]
             if gdf.empty:
                 continue
+            y_vals = gdf.set_index("block").reindex(block_labels)["time_to_nj"].to_numpy()
             plt.plot(
-                gdf["block"],
-                gdf["time_to_nj"],
+                x,
+                y_vals,
                 label=grp,
                 marker="o",
                 linewidth=1.5,
@@ -745,7 +749,7 @@ def plot_compare(df, kind="weekday_weekend", week_range=None):
         plt.title(f"Lincoln Tunnel — {target_weekday}s: Rush vs Non-Rush (To NJ)", fontsize=14, pad=12)
         plt.xlabel("Time of Day Block")
         plt.ylabel("Average Minutes (To NJ)")
-        plt.xticks(block_labels, rotation=15)
+        plt.xticks(x, block_labels, rotation=15)
         _set_y_ticks_from5_every3([agg["time_to_nj"]])
         _apply_grid()
         plt.legend(title=target_weekday, ncol=2, loc="upper left", frameon=True, framealpha=0.6)
