@@ -2447,3 +2447,11 @@ Logged time_to_ny=33 min, time_to_nj=14 min, speed_to_ny=8 mph, speed_to_nj=19 m
 No values found (minutes/speeds) at 2025-10-22T16:40 — skipping CSV write. Notes=fallback_text_parse;ok
 No values found (minutes/speeds) at 2025-10-22T16:45 — skipping CSV write. Notes=fallback_text_parse;ok
 Logged time_to_ny=29 min, time_to_nj=14 min, speed_to_ny=9 mph, speed_to_nj=19 mph at 2025-10-22T16:50 (NY time)
+Logged time_to_ny=33 min, time_to_nj=13 min, speed_to_ny=8 mph, speed_to_nj=19 mph at 2025-10-22T16:55 (NY time)
+Logged time_to_ny=34 min, time_to_nj=14 min, speed_to_ny=8 mph, speed_to_nj=19 mph at 2025-10-22T17:00 (NY time)
+Logged time_to_ny=34 min, time_to_nj=12 min, speed_to_ny=8 mph, speed_to_nj=21 mph at 2025-10-22T17:05 (NY time)
+Logged time_to_ny=32 min, time_to_nj=13 min, speed_to_ny=8 mph, speed_to_nj=21 mph at 2025-10-22T17:10 (NY time)
+Logged time_to_ny=32 min, time_to_nj=13 min, speed_to_ny=8 mph, speed_to_nj=20 mph at 2025-10-22T17:15 (NY time)
+Logged time_to_ny=33 min, time_to_nj=13 min, speed_to_ny=8 mph, speed_to_nj=20 mph at 2025-10-22T17:20 (NY time)
+Logged time_to_ny=33 min, time_to_nj=13 min, speed_to_ny=8 mph, speed_to_nj=20 mph at 2025-10-22T17:25 (NY time)
+Logged time_to_ny=35 min, time_to_nj=13 min, speed_to_ny=8 mph, speed_to_nj=20 mph at 2025-10-22T17:30 (NY time)
