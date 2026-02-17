@@ -11,7 +11,7 @@ Usage Examples:
 
     # Aggregate: all weeks averaged; specific weeks; rush vs non-rush periods
     python plot_congestion.py --aggregate
-    python plot_congestion.py --aggregate --week 2025-10-14 --week 2025-11-01
+    python plot_congestion.py --aggregate --week 2026-01-05 --week 2026-11-01
     python plot_congestion.py --aggregate --blocks
 
     # Compare: weekdays vs weekends; holidays vs non-holidays; each tuesdays with each other
